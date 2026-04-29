@@ -37,6 +37,38 @@ def get_subject_token_index(prompt, subject, tokenizer):
     return len(prompt_ids) - 2  # Default to one before last if not found
 
 
+def get_target_token_ids(target_token, tokenizer):
+    """
+    Returns GPT-2 token ids for the target string as it should appear next.
+    We prepend a space because many GPT-2 tokens are space-prefixed.
+    """
+    target_token_str = " " + str(target_token).strip()
+    return tokenizer.encode(target_token_str, add_special_tokens=False)
+
+
+def prob_of_target_sequence(prompt, target_token_ids, model, tokenizer):
+    """
+    Probability of generating the (possibly multi-token) target immediately after `prompt`.
+    For a single token, this reduces to the softmax probability at the prompt's last position.
+    """
+    if len(target_token_ids) == 0:
+        return 0.0
+
+    # Start from the prompt
+    inputs = tokenizer(prompt, return_tensors="pt")
+    input_ids = inputs["input_ids"]
+
+    p = 1.0
+    with torch.no_grad():
+        for next_tid in target_token_ids:
+            out = model(input_ids=input_ids)
+            next_probs = torch.softmax(out.logits[0, -1, :], dim=-1)
+            p *= next_probs[int(next_tid)].item()
+            input_ids = torch.cat([input_ids, torch.tensor([[int(next_tid)]])], dim=1)
+
+    return p
+
+
 class HeadAblator:
     def __init__(self, model):
         self.model = model
@@ -83,16 +115,15 @@ def run_experiment():
     for idx, row in df.iterrows():
         prompt = row['Prompt']
         subject = row['Subject Word(s)']
-        target_token_str = " " + row['Target Token'].strip()  # GPT-2 tokens often have leading space
-        target_token_id = tokenizer.encode(target_token_str)[0]
+        target_token_ids = get_target_token_ids(row['Target Token'], tokenizer)
 
         # 1. Baseline Run
         inputs = tokenizer(prompt, return_tensors="pt")
         with torch.no_grad():
             outputs = model(**inputs)
 
-        last_logit = outputs.logits[0, -1, :]
-        baseline_prob = torch.softmax(last_logit, dim=-1)[target_token_id].item()
+        # Probability of the (possibly multi-token) target continuation
+        baseline_prob = prob_of_target_sequence(prompt, target_token_ids, model, tokenizer)
 
         # Find Subject Index
         subj_idx = get_subject_token_index(prompt, subject, tokenizer)
@@ -129,11 +160,9 @@ def run_experiment():
         def measure_intervention(heads_dict):
             if not heads_dict: return 0.0
             ablator.apply_ablation(heads_dict)
-            with torch.no_grad():
-                out = model(**inputs)
+            p_int = prob_of_target_sequence(prompt, target_token_ids, model, tokenizer)
             ablator.remove_hooks()
-            p_int = torch.softmax(out.logits[0, -1, :], dim=-1)[target_token_id].item()
-            return (baseline_prob - p_int) / baseline_prob
+            return 0.0 if baseline_prob == 0.0 else (baseline_prob - p_int) / baseline_prob
 
         # Collect Deltas
         delta_a = measure_intervention({best_layer: [best_head]})
@@ -169,12 +198,13 @@ def get_top_k_tokens(logits, tokenizer, k=5):
 
 
 def plot_top_5_comparison(prompt, heads_to_ablate, model, tokenizer, title="Effect of Ablation"):
-    """Generates the dual-bar chart for the report."""
+    """Generates a direct (double-bar) comparison chart for the report."""
     # Baseline
     inputs = tokenizer(prompt, return_tensors="pt")
     with torch.no_grad():
         out_orig = model(**inputs)
-    tokens_orig, probs_orig = get_top_k_tokens(out_orig.logits[0, -1, :], tokenizer)
+    logits_orig = out_orig.logits[0, -1, :]
+    probs_orig_full = torch.softmax(logits_orig, dim=-1)
 
     # Intervention
     ablator = HeadAblator(model)
@@ -183,21 +213,29 @@ def plot_top_5_comparison(prompt, heads_to_ablate, model, tokenizer, title="Effe
         out_int = model(**inputs)
     ablator.remove_hooks()
 
-    tokens_int, probs_int = get_top_k_tokens(out_int.logits[0, -1, :], tokenizer)
+    logits_int = out_int.logits[0, -1, :]
+    probs_int_full = torch.softmax(logits_int, dim=-1)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    # Compare probabilities for the SAME top-5 tokens (from baseline), as required.
+    top_ids = torch.topk(probs_orig_full, 5).indices.tolist()
+    tokens = [tokenizer.decode([tid]) for tid in top_ids]
+    probs_before = [probs_orig_full[tid].item() for tid in top_ids]
+    probs_after = [probs_int_full[tid].item() for tid in top_ids]
 
-    ax1.bar(tokens_orig, probs_orig, color='#3498db')
-    ax1.set_title(f"Original Model\nPrompt: '{prompt}...'")
-    ax1.set_ylabel("Probability")
-    ax1.set_ylim(0, 1.0)
+    x = np.arange(len(tokens))
+    width = 0.38
+    fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+    ax.bar(x - width / 2, probs_before, width, label="Original", color="#3498db")
+    ax.bar(x + width / 2, probs_after, width, label="Post-Ablation", color="#e74c3c")
 
-    ax2.bar(tokens_int, probs_int, color='#e74c3c')
-    ax2.set_title(f"Post-Ablation\nHeads: {heads_to_ablate}")
-    ax2.set_ylim(0, 1.0)
+    ax.set_xticks(x)
+    ax.set_xticklabels(tokens, rotation=20, ha="right")
+    ax.set_ylabel("Probability")
+    ax.set_ylim(0, 1.0)
+    ax.set_title(f"{title}\nPrompt: '{prompt}...'\nHeads: {heads_to_ablate}")
+    ax.legend()
 
-    plt.suptitle(title, fontsize=16)
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.tight_layout()
     plt.show()
 
 
