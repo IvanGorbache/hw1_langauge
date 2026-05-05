@@ -10,7 +10,7 @@ import os
 # --- Configuration ---
 MODEL_NAME = "gpt2"  # GPT-2 Small (124M)
 DATA_PATH = "ex1_data.csv"
-OUTPUT_CSV = "ID_results.csv"  # Replace ID with your ID
+OUTPUT_CSV = "results.csv"
 
 
 def get_subject_token_index(prompt, subject, tokenizer):
@@ -76,6 +76,7 @@ def run_experiment():
     model = GPT2LMHeadModel.from_pretrained(MODEL_NAME, output_attentions=True)
     model.eval()
     ablator = HeadAblator(model)
+    n_heads = model.config.n_head
 
     df = pd.read_csv(DATA_PATH)
     results = []
@@ -109,20 +110,20 @@ def run_experiment():
 
         # Condition A: Single strongest head
         best_flat_idx = top_indices[0].item()
-        best_layer, best_head = divmod(best_flat_idx, 12)
+        best_layer, best_head = divmod(best_flat_idx, n_heads)
 
         # Condition B: Top 3 heads
         top3_flat = top_indices[:3].tolist()
         cond_b_heads = {}
         for f_idx in top3_flat:
-            l, h = divmod(f_idx, 12)
+            l, h = divmod(f_idx, n_heads)
             cond_b_heads.setdefault(l, []).append(h)
 
         # Condition C: All heads > 0.25
         cond_c_flat = torch.where(flat_weights > 0.25)[0].tolist()
         cond_c_heads = {}
         for f_idx in cond_c_flat:
-            l, h = divmod(f_idx, 12)
+            l, h = divmod(f_idx, n_heads)
             cond_c_heads.setdefault(l, []).append(h)
 
         # Function to measure delta
@@ -219,7 +220,7 @@ if __name__ == "__main__":
 
     # --- 3. PART B: DATA ANALYSIS FOR REPORT ---
     print("\n--- Generating Analysis Summary ---")
-    res_df = pd.read_csv("ID_results.csv")
+    res_df = pd.read_csv(OUTPUT_CSV)
     original_data = pd.read_csv("ex1_data.csv")
     res_df['Domain'] = original_data['Domain']
 
