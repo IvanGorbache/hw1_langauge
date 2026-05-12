@@ -1,0 +1,23 @@
+מטלה 1 — חלק ב׳: פרופיל ראש קשב (טיוטת דו״ח, כ־עמוד אחד)
+==========================================================
+
+כיוון הניתוח
+פרופיל ראש קשב ספציפי: זיהוי תפקידו דרך התנהגות הניבוי לפני ואחרי ניטרול תנאי א׳ (איפוס ראש הקשב עם הקשב המרבי לטוקן הנושא).
+
+
+תיאור הממצא
+במשפט על קבוצת הפוטבול Patriots מהדאטה (המשפט מסתיים אחרי המילה New), התשובה העובדתית הנדרשת היא המשך המרכיב את שם האזור: England — כלומר "New England".
+לאחר ניטרול ראש הקשב שזוהה בתנאי א׳ למשפט זה, התפלגות ההסתברות על הטוקן הבא השתנתה כך שהטוקן עם ההסתברות הגבוהה ביותר היה York ולא England.
+כלומר, למרות שהמשפט עוסק בקבוצה מניו אינגלנד (ולא בניו יורק), השבתת ראש זה גרמה למודל להעדיף את השלמת הרצף הלקסיקלי "New York" (דרך York) על פני השלמת "New England".
+
+פרשנות קצרה
+שני המשכים אפשריים אחרי "New " מתחרים על אותו הקשר טקסטואלי קצר: המשך לאזור גיאוגרפי בשם או המשך לשם עיר צפוף. ראש הקשב שניטרל כנראה תורם בדרך כלל לפירוש המותאם להקשר (קבוצה + שם מקום מורכב), וללא תרומתו נשארים דפוסי שפה כלליים חזקים — ובמקרה זה העדפת York המשקפת את צימוד New–York התדיר יותר.
+
+קישור לניסוי (להשלמה בדו״ח הסופי)
+• משפט/Dataset: שורת Patriots ב־ex1_data.csv (נושא Patriots, יעד England).
+• מזהים מההרצה: לפי ID_results.csv עבור אותו prompt_id — max_head_layer ו־max_head_index של תנאי א׳ (למשל במקרה שנשמר בקבצים: שכבה 3, ראש 6).
+• חובה: להטמיע את תרשים ה־Top‑5 לפני ואחרי הניטרול לאותו משפט וראש, כפי שהוגדר במטלה.
+
+
+English (optional one-liner for the report)
+Ablating the subject-attending head on “…Patriots play in New” flipped the argmax next-token prediction from the correct continuation (England) to York—despite the sentence referring to New England, not New York—showing that this head helps resolve ambiguous “New ” continuations in a context-appropriate way.
